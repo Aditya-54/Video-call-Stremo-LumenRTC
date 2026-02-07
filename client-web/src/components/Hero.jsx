@@ -1,6 +1,6 @@
 import React from 'react';
 import { motion } from 'framer-motion';
-import { ArrowDown, Zap, Globe, Shield, Satellite, Radio, Cpu, Lock, Video, ChevronRight, Server } from 'lucide-react';
+import { ArrowDown, Zap, Globe, Shield, Satellite, Radio, Cpu, Lock, Video, ChevronRight, Server, Download } from 'lucide-react';
 import Lobby from './Lobby';
 
 export default function Hero({ onJoin }) {
@@ -67,6 +67,22 @@ export default function Hero({ onJoin }) {
                             How it Works
                         </button>
                     </div>
+
+                    <div className="mt-8 flex justify-center">
+                        <a
+                            href="https://github.com/Aditya-54/Video-call-Stremo-LumenRTC"
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="group px-6 py-3 bg-gray-800/80 hover:bg-gray-700/80 rounded-full text-sm font-medium text-gray-300 transition-all border border-gray-700 flex items-center gap-2 hover:text-white hover:border-blue-500/50"
+                        >
+                            <Download className="w-4 h-4 text-blue-400 group-hover:text-blue-300" />
+                            Download AI Engine (.exe) on GitHub
+                        </a>
+                    </div>
+                    <p className="mt-4 text-xs text-gray-500 max-w-lg mx-auto">
+                        * To enable <strong>AI Upscaling</strong> and <strong>GPU Acceleration</strong>, you must download and run the AI Engine on your PC.
+                        The web version supports standard video calling only.
+                    </p>
                 </motion.div>
 
                 {/* Scroll Hint */}
