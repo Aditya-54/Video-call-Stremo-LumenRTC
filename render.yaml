@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: lumenrtc-signaling
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node server.js
+    cwd: signaling
+    envVars:
+      - key: PORT
+        value: 10000

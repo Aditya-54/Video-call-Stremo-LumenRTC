@@ -1,0 +1,6 @@
+opencv-python
+aiortc
+av
+numpy
+python-socketio[client]
+onnxruntime

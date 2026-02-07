@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LumenRTC Signaling Test</title>
+    <script src="/socket.io/socket.io.js"></script>
+</head>
+<body>
+    <h1>LumenRTC Signaling Test</h1>
+    <div id="status">Connecting...</div>
+    <div id="log"></div>
+
+    <script>
+        const socket = io();
+        const statusDiv = document.getElementById('status');
+        const logDiv = document.getElementById('log');
+
+        function log(msg) {
+            const p = document.createElement('p');
+            p.textContent = msg;
+            logDiv.appendChild(p);
+        }
+
+        socket.on('connect', () => {
+            statusDiv.textContent = 'Connected';
+            statusDiv.style.color = 'green';
+            log('Connected with ID: ' + socket.id);
+            socket.emit('join-room', 'test-room');
+        });
+
+        socket.on('user-connected', (userId) => {
+            log('User connected: ' + userId);
+        });
+
+        socket.on('disconnect', () => {
+            statusDiv.textContent = 'Disconnected';
+            statusDiv.style.color = 'red';
+            log('Disconnected');
+        });
+    </script>
+</body>
+</html>
