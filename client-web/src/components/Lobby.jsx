@@ -6,7 +6,7 @@ import { twMerge } from 'tailwind-merge';
 export default function Lobby({ onJoin, isEmbedded = false }) {
     const [activeTab, setActiveTab] = useState('join'); // 'join' or 'create'
     const [username, setUsername] = useState('');
-    const [roomId, setRoomId] = useState('test-room');
+    const [roomId, setRoomId] = useState('');
 
     const handleJoinSubmit = (e) => {
         e.preventDefault();
@@ -19,7 +19,7 @@ export default function Lobby({ onJoin, isEmbedded = false }) {
         e.preventDefault();
         if (username) {
             // Generate a random 4-char code for easy sharing
-            const newRoomId = 'test-room'; // Force test-room for backend connectivity
+            const newRoomId = Math.random().toString(36).substring(2, 6).toUpperCase();
             onJoin(username, newRoomId);
         }
     };
