@@ -20,7 +20,11 @@ async def main():
         print(f"GPU: {specs['gpu_name']}")
 
     # 2. Setup Components
-    signaling = SignalingClient("http://localhost:3000", None, None, None)
+    # TODO: Make this configurable via config file or argument
+    SIGNALING_URL = "https://video-call-stremo-lumenrtc.onrender.com" 
+    # SIGNALING_URL = "http://localhost:3000" # Uncomment for local dev
+    
+    signaling = SignalingClient(SIGNALING_URL, None, None, None)
     rtc = RTCManager(signaling)
     
     # 3. Media Pipeline
@@ -52,7 +56,9 @@ async def main():
     
     # Auto-open the frontend in browser (for user convenience)
     import webbrowser
-    webbrowser.open("http://localhost:5173") # TODO: Change to production URL later
+    # Replace this with your actual Vercel/Render frontend URL once deployed
+    PRODUCTION_FRONTEND_URL = "https://video-call-stremo-lumenrtc-1.onrender.com/" 
+    webbrowser.open(PRODUCTION_FRONTEND_URL) 
     
     print("Running... Press Ctrl+C to exit.")
     if role == "host":

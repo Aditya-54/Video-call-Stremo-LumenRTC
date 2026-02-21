@@ -27,11 +27,15 @@ io.on('connection', (socket) => {
     });
 
     socket.on('offer', (data) => {
-        socket.to(data.roomId).emit('offer', data.sdp);
+        console.log(`Forwarding offer to room ${data.roomId}, SDP length: ${data.sdp?.length || 'undefined'}`);
+        // Forward the entire payload - the receiver expects { sdp: ... }
+        socket.to(data.roomId).emit('offer', data);
     });
 
     socket.on('answer', (data) => {
-        socket.to(data.roomId).emit('answer', data.sdp);
+        console.log(`Forwarding answer to room ${data.roomId}, SDP length: ${data.sdp?.length || 'undefined'}`);
+        // Forward the entire payload - the receiver expects { sdp: ... }
+        socket.to(data.roomId).emit('answer', data);
     });
 
     socket.on('candidate', (data) => {

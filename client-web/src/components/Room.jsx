@@ -4,7 +4,7 @@ import { Mic, MicOff, Video, VideoOff, PhoneOff } from 'lucide-react';
 import Chat from './Chat';
 import GpuStats from './GpuStats';
 
-const SIGNALING_URL = import.meta.env.VITE_SIGNALING_URL || `http://${window.location.hostname}:3000`;
+const SIGNALING_URL = `http://${window.location.hostname}:3000`; // import.meta.env.VITE_SIGNALING_URL ||
 
 const RTC_CONFIG = {
     iceServers: [
@@ -73,11 +73,12 @@ export default function Room({ username, roomId, onLeave }) {
         if (!socket) return;
 
         const createPeerConnection = () => {
+            if (peerConnection.current) return peerConnection.current;
+
             const pc = new RTCPeerConnection(RTC_CONFIG);
 
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
-                    console.log("Found ICE Candidate:", event.candidate.candidate);
                     socket.emit('candidate', { roomId, candidate: event.candidate });
                 }
             };
@@ -86,10 +87,11 @@ export default function Room({ username, roomId, onLeave }) {
                 console.log("ICE State:", pc.iceConnectionState);
                 if (pc.iceConnectionState === 'connected') setStatus('Connected');
                 if (pc.iceConnectionState === 'failed') setStatus('Connection Failed (ICE)');
+                if (pc.iceConnectionState === 'disconnected') setStatus('Peer Disconnected');
             };
 
             pc.ontrack = (event) => {
-                console.log("Remote Track Received");
+                console.log("Remote Track Received", event.streams[0]);
                 setRemoteStream(event.streams[0]);
                 if (remoteVideoRef.current) {
                     remoteVideoRef.current.srcObject = event.streams[0];
@@ -99,17 +101,33 @@ export default function Room({ username, roomId, onLeave }) {
 
             if (localStreamRef.current) {
                 localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
+            } else {
+                console.warn("No local stream to add to PC!");
             }
 
             peerConnection.current = pc;
             return pc;
         };
 
+        // Helper to wait for local stream
+        const waitForLocalStream = async () => {
+            let attempts = 0;
+            while (!localStreamRef.current && attempts < 50) { // Wait up to 5s
+                console.log("Waiting for local stream...");
+                await new Promise(r => setTimeout(r, 100));
+                attempts++;
+            }
+            if (!localStreamRef.current) console.error("Timed out waiting for local stream");
+            return localStreamRef.current;
+        };
+
         socket.on('user-connected', async (userId) => {
             console.log("User connected:", userId);
-            setStatus('Peer joined. Initiating call...');
-            const pc = createPeerConnection(); // Initiator creates PC
+            setStatus('Peer joined. Initiating...');
 
+            await waitForLocalStream(); // Ensure we have camera before calling
+
+            const pc = createPeerConnection();
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
 
@@ -119,10 +137,12 @@ export default function Room({ username, roomId, onLeave }) {
         socket.on('offer', async (data) => {
             console.log("Received Offer");
             setStatus('Receiving call...');
-            if (!peerConnection.current) createPeerConnection();
-            const pc = peerConnection.current;
 
+            await waitForLocalStream(); // Ensure we have camera before answering
+
+            const pc = createPeerConnection();
             await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.sdp }));
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
 
@@ -146,8 +166,6 @@ export default function Room({ username, roomId, onLeave }) {
         });
 
         socket.on('hardware-info', (data) => {
-            console.log("Received Hardware Info from Backend:", data);
-            // Dispatch custom event or callback to GpuStats (implemented via prop update)
             if (onBackendStats) onBackendStats(data.specs);
         });
 
@@ -159,6 +177,13 @@ export default function Room({ username, roomId, onLeave }) {
             socket.off('hardware-info');
         };
     }, [socket, roomId]);
+
+    // Ensure video element gets stream even after re-renders
+    useEffect(() => {
+        if (remoteVideoRef.current && remoteStream) {
+            remoteVideoRef.current.srcObject = remoteStream;
+        }
+    }, [remoteStream]);
 
     const toggleMute = () => {
         if (localStreamRef.current) {

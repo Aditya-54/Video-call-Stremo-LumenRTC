@@ -9,14 +9,14 @@ socket.on("connect", () => {
 
 socket.on("user-connected", (userId) => {
     console.log("TEST: User connected:", userId);
-    // Determine success if we get here or just by connecting
+    
 });
 
 socket.on("disconnect", () => {
     console.log("TEST: Disconnected");
 });
 
-// Keep alive for a bit then exit
+
 setTimeout(() => {
     console.log("TEST: Finishing test...");
     socket.disconnect();
