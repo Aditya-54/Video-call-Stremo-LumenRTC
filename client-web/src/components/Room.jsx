@@ -4,7 +4,7 @@ import { Mic, MicOff, Video, VideoOff, PhoneOff } from 'lucide-react';
 import Chat from './Chat';
 import GpuStats from './GpuStats';
 
-const SIGNALING_URL = `http://${window.location.hostname}:3000`; // import.meta.env.VITE_SIGNALING_URL ||
+const SIGNALING_URL = `http://${window.location.hostname}:3000`;
 
 const RTC_CONFIG = {
     iceServers: [
@@ -20,7 +20,6 @@ export default function Room({ username, roomId, onLeave }) {
     const [isMuted, setIsMuted] = useState(false);
     const [isVideoOff, setIsVideoOff] = useState(false);
     const [status, setStatus] = useState('Connecting...');
-
     const [backendStats, setBackendStats] = useState(null);
 
     const localVideoRef = useRef(null);
@@ -32,24 +31,38 @@ export default function Room({ username, roomId, onLeave }) {
         const newSocket = io(SIGNALING_URL);
         setSocket(newSocket);
 
+        newSocket.on('connect', () => {
+            console.log('Socket connected:', newSocket.id);
+        });
+
         newSocket.on('hardware-info', (data) => {
             console.log("Received Backend Hardware Info:", data);
             setBackendStats(data.specs);
         });
 
-
         const startCall = async () => {
             try {
-                const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+                console.log('Requesting media devices...');
+                const stream = await navigator.mediaDevices.getUserMedia({ 
+                    video: true, 
+                    audio: true 
+                });
+                console.log('Got local stream:', stream.id);
+                
                 localStreamRef.current = stream;
-                if (localVideoRef.current) localVideoRef.current.srcObject = stream;
+                if (localVideoRef.current) {
+                    localVideoRef.current.srcObject = stream;
+                }
 
+                console.log('Joining room:', roomId);
                 newSocket.emit('join-room', roomId);
                 setStatus('Waiting for peer...');
             } catch (err) {
                 console.error("Error accessing media:", err);
                 if (err.name === 'NotReadableError') {
                     setStatus('Camera busy (Close other apps/tabs?)');
+                } else if (err.name === 'NotAllowedError') {
+                    setStatus('Camera/Mic permission denied');
                 } else {
                     setStatus('Error accessing camera/mic: ' + err.message);
                 }
@@ -59,11 +72,16 @@ export default function Room({ username, roomId, onLeave }) {
         startCall();
 
         return () => {
+            console.log('Cleaning up Room component');
             if (localStreamRef.current) {
-                localStreamRef.current.getTracks().forEach(track => track.stop());
+                localStreamRef.current.getTracks().forEach(track => {
+                    track.stop();
+                    console.log('Stopped track:', track.kind);
+                });
             }
             if (peerConnection.current) {
                 peerConnection.current.close();
+                console.log('Closed peer connection');
             }
             newSocket.disconnect();
         };
@@ -73,25 +91,40 @@ export default function Room({ username, roomId, onLeave }) {
         if (!socket) return;
 
         const createPeerConnection = () => {
-            if (peerConnection.current) return peerConnection.current;
+            if (peerConnection.current) {
+                console.log('Reusing existing peer connection');
+                return peerConnection.current;
+            }
 
+            console.log('Creating new peer connection');
             const pc = new RTCPeerConnection(RTC_CONFIG);
 
             pc.onicecandidate = (event) => {
                 if (event.candidate) {
+                    console.log('Sending ICE candidate');
                     socket.emit('candidate', { roomId, candidate: event.candidate });
+                } else {
+                    console.log('All ICE candidates sent');
                 }
             };
 
             pc.oniceconnectionstatechange = () => {
-                console.log("ICE State:", pc.iceConnectionState);
-                if (pc.iceConnectionState === 'connected') setStatus('Connected');
-                if (pc.iceConnectionState === 'failed') setStatus('Connection Failed (ICE)');
-                if (pc.iceConnectionState === 'disconnected') setStatus('Peer Disconnected');
+                console.log("ICE Connection State:", pc.iceConnectionState);
+                if (pc.iceConnectionState === 'connected') {
+                    setStatus('Connected');
+                } else if (pc.iceConnectionState === 'failed') {
+                    setStatus('Connection Failed (ICE)');
+                } else if (pc.iceConnectionState === 'disconnected') {
+                    setStatus('Peer Disconnected');
+                }
+            };
+
+            pc.onconnectionstatechange = () => {
+                console.log("Connection State:", pc.connectionState);
             };
 
             pc.ontrack = (event) => {
-                console.log("Remote Track Received", event.streams[0]);
+                console.log("Remote Track Received:", event.streams[0].id);
                 setRemoteStream(event.streams[0]);
                 if (remoteVideoRef.current) {
                     remoteVideoRef.current.srcObject = event.streams[0];
@@ -100,24 +133,29 @@ export default function Room({ username, roomId, onLeave }) {
             };
 
             if (localStreamRef.current) {
-                localStreamRef.current.getTracks().forEach(track => pc.addTrack(track, localStreamRef.current));
+                console.log('Adding local tracks to peer connection');
+                localStreamRef.current.getTracks().forEach(track => {
+                    pc.addTrack(track, localStreamRef.current);
+                    console.log('Added track:', track.kind);
+                });
             } else {
-                console.warn("No local stream to add to PC!");
+                console.error("No local stream to add to PC!");
             }
 
             peerConnection.current = pc;
             return pc;
         };
 
-        // Helper to wait for local stream
         const waitForLocalStream = async () => {
             let attempts = 0;
-            while (!localStreamRef.current && attempts < 50) { // Wait up to 5s
-                console.log("Waiting for local stream...");
+            while (!localStreamRef.current && attempts < 50) {
+                console.log("Waiting for local stream... attempt", attempts + 1);
                 await new Promise(r => setTimeout(r, 100));
                 attempts++;
             }
-            if (!localStreamRef.current) console.error("Timed out waiting for local stream");
+            if (!localStreamRef.current) {
+                console.error("Timed out waiting for local stream");
+            }
             return localStreamRef.current;
         };
 
@@ -125,48 +163,94 @@ export default function Room({ username, roomId, onLeave }) {
             console.log("User connected:", userId);
             setStatus('Peer joined. Initiating...');
 
-            await waitForLocalStream(); // Ensure we have camera before calling
+            await waitForLocalStream();
 
             const pc = createPeerConnection();
+            console.log('Creating offer...');
             const offer = await pc.createOffer();
             await pc.setLocalDescription(offer);
+            console.log('Sending offer, SDP length:', pc.localDescription.sdp.length);
 
             socket.emit('offer', { roomId, sdp: pc.localDescription.sdp });
         });
 
         socket.on('offer', async (data) => {
-            console.log("Received Offer");
+            console.log("Received Offer - Full data object:", data);
+            console.log("Type of data:", typeof data);
+            console.log("Is data a string?", typeof data === 'string');
+            
+            // Handle both cases: data might be just the SDP string or an object
+            let sdp;
+            if (typeof data === 'string') {
+                sdp = data;
+                console.log('Data is SDP string directly, length:', sdp.length);
+            } else if (data && data.sdp) {
+                sdp = data.sdp;
+                console.log('Data is object with sdp property, length:', sdp.length);
+            } else {
+                console.error('Invalid offer data format:', data);
+                return;
+            }
+            
             setStatus('Receiving call...');
 
-            await waitForLocalStream(); // Ensure we have camera before answering
+            await waitForLocalStream();
 
             const pc = createPeerConnection();
-            await pc.setRemoteDescription(new RTCSessionDescription({ type: 'offer', sdp: data.sdp }));
+            console.log('Setting remote description (offer)');
+            await pc.setRemoteDescription(new RTCSessionDescription({ 
+                type: 'offer', 
+                sdp: sdp
+            }));
 
+            console.log('Creating answer...');
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
+            console.log('Sending answer, SDP length:', pc.localDescription.sdp.length);
 
             socket.emit('answer', { roomId, sdp: pc.localDescription.sdp });
-            setStatus('Connected');
+            setStatus('Answering...');
         });
 
         socket.on('answer', async (data) => {
-            console.log("Received Answer");
+            console.log("Received Answer - Full data object:", data);
+            console.log("Type of data:", typeof data);
+            
+            // Handle both cases: data might be just the SDP string or an object
+            let sdp;
+            if (typeof data === 'string') {
+                sdp = data;
+                console.log('Data is SDP string directly, length:', sdp.length);
+            } else if (data && data.sdp) {
+                sdp = data.sdp;
+                console.log('Data is object with sdp property, length:', sdp.length);
+            } else {
+                console.error('Invalid answer data format:', data);
+                return;
+            }
+            
             const pc = peerConnection.current;
             if (pc) {
-                await pc.setRemoteDescription(new RTCSessionDescription({ type: 'answer', sdp: data.sdp }));
+                console.log('Setting remote description (answer)');
+                await pc.setRemoteDescription(new RTCSessionDescription({ 
+                    type: 'answer', 
+                    sdp: sdp
+                }));
+                console.log('Remote description set successfully');
+            } else {
+                console.error('No peer connection when receiving answer');
             }
         });
 
         socket.on('candidate', async (candidate) => {
+            console.log('Received ICE candidate');
             const pc = peerConnection.current;
-            if (pc) {
+            if (pc && pc.remoteDescription) {
                 await pc.addIceCandidate(new RTCIceCandidate(candidate));
+                console.log('Added ICE candidate');
+            } else {
+                console.warn('Cannot add ICE candidate, peer connection not ready');
             }
-        });
-
-        socket.on('hardware-info', (data) => {
-            if (onBackendStats) onBackendStats(data.specs);
         });
 
         return () => {
@@ -178,24 +262,32 @@ export default function Room({ username, roomId, onLeave }) {
         };
     }, [socket, roomId]);
 
-    // Ensure video element gets stream even after re-renders
     useEffect(() => {
         if (remoteVideoRef.current && remoteStream) {
             remoteVideoRef.current.srcObject = remoteStream;
+            console.log('Set remote stream to video element');
         }
     }, [remoteStream]);
 
     const toggleMute = () => {
         if (localStreamRef.current) {
-            localStreamRef.current.getAudioTracks().forEach(track => track.enabled = !track.enabled);
+            const enabled = !isMuted;
+            localStreamRef.current.getAudioTracks().forEach(track => {
+                track.enabled = enabled;
+            });
             setIsMuted(!isMuted);
+            console.log('Audio', enabled ? 'unmuted' : 'muted');
         }
     };
 
     const toggleVideo = () => {
         if (localStreamRef.current) {
-            localStreamRef.current.getVideoTracks().forEach(track => track.enabled = !track.enabled);
+            const enabled = !isVideoOff;
+            localStreamRef.current.getVideoTracks().forEach(track => {
+                track.enabled = enabled;
+            });
             setIsVideoOff(!isVideoOff);
+            console.log('Video', enabled ? 'enabled' : 'disabled');
         }
     };
 
